@@ -5,7 +5,7 @@
 
 install.packages("litsearchr")
 install.packages("revtools")
-library(litsearchr)
+install.packages("igraph")
 
 
 ###########################
@@ -50,4 +50,75 @@ ASNWG_data$title
 write.csv(ASNWG_data1$title, "./remove_dup_1")
 write.csv(ASNWG_data$title,"./remove_dup_2")
 
-#extract potential keywords from 
+#extract potential keywords from Title, Abstract, and Keywords and join them
+
+rakedkeywords <-
+  litsearchr::extract_terms(
+    text = paste(ASNWG_data$title, ASNWG_data$abstract),
+    method = "fakerake",
+    min_freq = 2,
+    ngrams = FALSE,
+    language = "English"
+  )
+
+taggedkeywords <-
+  litsearchr::extract_terms(
+    keywords = ASNWG_data$keywords,
+    method = "tagged",
+    min_freq = 2,
+    ngrams = TRUE,
+    min_n = 2,
+    language = "English"
+  )
+
+all_keywords <- unique(append(taggedkeywords, rakedkeywords))
+
+head(all_keywords, 10)
+
+
+##Find the most important keywords##
+ASNWG_tit_abs=paste(ASNWG_data$title, ASNWG_data$abstract)
+
+ASNWG_dfm <-
+  litsearchr::create_dfm(
+    elements = ASNWG_tit_abs,
+    features = all_keywords
+  )
+
+
+ASNWG_graph <-
+  litsearchr::create_network(
+    search_dfm = ASNWG_dfm,
+    min_studies = 2,
+    min_occ = 2
+  )
+
+ASNWG_dfm[1:7,1:7]
+
+##cutoff location for keyword importance
+#
+
+library(igraph)
+
+plot(
+  sort(igraph::strength(ASNWG_graph)),
+  ylab = "node strength")
+
+cutoff <-
+  litsearchr::find_cutoff(
+    ASNWG_graph,
+    method = "cumulative",
+    percent = .60,
+    imp_method = "strength"
+  )
+
+##Get_suggested search terms
+
+reducedgraph <-
+  litsearchr::reduce_graph(ASNWG_graph, cutoff_strength = cutoff[1])
+
+searchterms <- litsearchr::get_keywords(reducedgraph)
+
+head(searchterms, 20)
+
+write.csv(searchterms, "./ASNWG_search_terms_3.csv")
